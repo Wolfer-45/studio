@@ -27,8 +27,8 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [currentVariantIndex, setCurrentVariantIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(100);
   const [isMounted, setIsMounted] = useState(false);
   const [activeSection, setActiveSection] = useState('product');
 
@@ -46,8 +46,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (index === currentVariantIndex) return;
     const newIndex = (index + variants.length) % variants.length;
     setCurrentVariantIndex(newIndex);
-    setIsLoading(true);
-    setLoadingProgress(0);
   };
 
   const selectNextVariant = () => selectVariant(currentVariantIndex + 1);
@@ -86,14 +84,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!isMounted) return;
   
     let isCancelled = false;
-    let loadedCount = 0;
     const { baseUrl, frameCount } = variant.image;
     const newImages: HTMLImageElement[] = [];
   
     const loadImages = () => {
-      setIsLoading(true);
-      setLoadingProgress(0);
-  
       for (let i = 1; i <= frameCount; i++) {
         if (isCancelled) break;
         const img = new Image();
@@ -102,17 +96,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   
         img.onload = () => {
           if (isCancelled) return;
-          loadedCount++;
-          const progress = Math.round((loadedCount / frameCount) * 100);
-          setLoadingProgress(progress);
   
-          if (loadedCount === 1) {
+          if (i === 1) {
             images.current = newImages;
             drawImage(0);
-          }
-  
-          if (loadedCount >= INITIAL_FRAMES_TO_LOAD) {
-            setIsLoading(false);
           }
         };
       }
@@ -127,7 +114,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 
   useEffect(() => {
-    if (isLoading || !isMounted) return;
+    if (!isMounted) return;
 
     const handleScroll = () => {
       if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
@@ -156,7 +143,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener('scroll', handleScroll);
         if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     }
-  }, [isLoading, isMounted, variant, drawImage]);
+  }, [isMounted, variant, drawImage]);
 
   useEffect(() => {
     const handleResize = () => {

@@ -1,7 +1,7 @@
+
 "use client";
 import React, { useEffect } from 'react';
 import { useAppContext } from '@/contexts/app-provider';
-import LoadingScreen from '@/components/loading-screen';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import HeroSection from '@/components/sections/hero';
@@ -13,7 +13,7 @@ import FaqSection from '@/components/sections/faq';
 import ContactSection from '@/components/sections/contact';
 
 export default function PageClient() {
-  const { isLoading, loadingProgress, canvasRef, selectNextVariant, selectPrevVariant } = useAppContext();
+  const { canvasRef, selectNextVariant, selectPrevVariant } = useAppContext();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -29,8 +29,7 @@ export default function PageClient() {
 
   return (
     <>
-      {isLoading && <LoadingScreen progress={loadingProgress} />}
-      <div className={`transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}>
+      <div>
         <Header />
         <main>
           <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full -z-10" />
