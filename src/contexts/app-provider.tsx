@@ -4,6 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { variants, type Variant } from '@/app/data/variants';
 import { hexToHsl } from '@/lib/color-utils';
+import LoadingScreen from '@/components/loading-screen';
 
 const INITIAL_FRAMES_TO_LOAD = 30;
 const SCROLL_ANIMATION_DISTANCE = 3000; // in pixels
@@ -27,8 +28,8 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [currentVariantIndex, setCurrentVariantIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(100);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
   const [activeSection, setActiveSection] = useState('product');
 
@@ -55,7 +56,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     const image = images.current[index];
-    if (canvas && ctx && image) {
+    if (canvas && ctx && image && image.complete) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const hRatio = canvas.width / image.width;
       const vRatio = canvas.height / image.height;
@@ -85,8 +86,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   
     let isCancelled = false;
     const { baseUrl, frameCount } = variant.image;
-    const newImages: HTMLImageElement[] = [];
+    const newImages: HTMLImageElement[] = new Array(frameCount);
+    let loadedCount = 0;
   
+    setLoadingProgress(0);
+    setIsLoading(true);
+
     const loadImages = () => {
       for (let i = 1; i <= frameCount; i++) {
         if (isCancelled) break;
@@ -96,10 +101,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   
         img.onload = () => {
           if (isCancelled) return;
+          
+          loadedCount++;
+          const progress = (loadedCount / frameCount) * 100;
+          setLoadingProgress(progress);
   
           if (i === 1) {
             images.current = newImages;
             drawImage(0);
+          }
+
+          if (loadedCount === frameCount) {
+             setTimeout(() => setIsLoading(false), 500);
           }
         };
       }
@@ -114,7 +127,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || isLoading) return;
 
     const handleScroll = () => {
       if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
@@ -122,7 +135,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       animationFrameId.current = requestAnimationFrame(() => {
         const scrollY = window.scrollY;
         const scrollFraction = Math.min(scrollY / SCROLL_ANIMATION_DISTANCE, 1);
-        const frameIndex = Math.floor(scrollFraction * (variant.image.frameCount - 1));
+        const frameIndex = Math.min(Math.floor(scrollFraction * (variant.image.frameCount)), variant.image.frameCount -1);
         
         drawImage(frameIndex);
 
@@ -143,7 +156,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener('scroll', handleScroll);
         if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     }
-  }, [isMounted, variant, drawImage]);
+  }, [isMounted, variant, drawImage, isLoading]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -173,7 +186,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeSection,
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+        {isLoading && <LoadingScreen progress={loadingProgress} />}
+        {children}
+    </AppContext.Provider>
+  );
 }
 
 export const useAppContext = () => {
