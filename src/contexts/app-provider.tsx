@@ -6,7 +6,6 @@ import { variants, type Variant } from '@/app/data/variants';
 import { hexToHsl } from '@/lib/color-utils';
 import LoadingScreen from '@/components/loading-screen';
 
-const INITIAL_FRAMES_TO_LOAD = 30;
 const SCROLL_ANIMATION_DISTANCE = 3000; // in pixels
 
 type AppContextType = {
@@ -53,6 +52,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const selectPrevVariant = () => selectVariant(currentVariantIndex - 1);
   
   const drawImage = useCallback((index: number) => {
+    if (index < 0 || index >= images.current.length) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     const image = images.current[index];
@@ -86,39 +86,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   
     let isCancelled = false;
     const { baseUrl, frameCount } = variant.image;
-    const newImages: HTMLImageElement[] = new Array(frameCount);
-    let loadedCount = 0;
-  
+    
     setLoadingProgress(0);
     setIsLoading(true);
 
-    const loadImages = () => {
-      for (let i = 1; i <= frameCount; i++) {
-        if (isCancelled) break;
-        const img = new Image();
-        img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.webp`;
-        newImages[i - 1] = img;
-  
-        img.onload = () => {
-          if (isCancelled) return;
-          
-          loadedCount++;
-          const progress = (loadedCount / frameCount) * 100;
-          setLoadingProgress(progress);
-  
-          if (i === 1) {
-            images.current = newImages;
-            drawImage(0);
-          }
+    const loadAllImages = async () => {
+        const imagePromises: Promise<HTMLImageElement>[] = [];
+        let loadedCount = 0;
 
-          if (loadedCount === frameCount) {
-             setTimeout(() => setIsLoading(false), 500);
-          }
-        };
-      }
+        for (let i = 1; i <= frameCount; i++) {
+            const promise = new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.webp`;
+                img.onload = () => {
+                    if (isCancelled) {
+                        reject(new Error('Image loading cancelled'));
+                        return;
+                    }
+                    loadedCount++;
+                    setLoadingProgress((loadedCount / frameCount) * 100);
+                    resolve(img);
+                };
+                img.onerror = reject;
+            });
+            imagePromises.push(promise);
+        }
+
+        try {
+            const loadedImages = await Promise.all(imagePromises);
+            if (!isCancelled) {
+                images.current = loadedImages;
+                drawImage(0);
+                setTimeout(() => setIsLoading(false), 250); // Short delay for transition
+            }
+        } catch (error) {
+            if (!isCancelled) {
+                console.error("Failed to load images for animation:", error);
+                setIsLoading(false); // Stop loading on error
+            }
+        }
     };
   
-    loadImages();
+    loadAllImages();
   
     return () => {
       isCancelled = true;
@@ -129,6 +138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted || isLoading) return;
 
+    let currentFrame = 0;
     const handleScroll = () => {
       if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
 
@@ -137,7 +147,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const scrollFraction = Math.min(scrollY / SCROLL_ANIMATION_DISTANCE, 1);
         const frameIndex = Math.min(Math.floor(scrollFraction * (variant.image.frameCount)), variant.image.frameCount -1);
         
-        drawImage(frameIndex);
+        if (frameIndex !== currentFrame) {
+            currentFrame = frameIndex;
+            drawImage(frameIndex);
+        }
 
         const sections = ['product', 'ingredients', 'nutrition', 'reviews', 'faq', 'contact'];
         let currentSection = '';
@@ -152,6 +165,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
+    // Initial draw
+    drawImage(0);
     return () => {
         window.removeEventListener('scroll', handleScroll);
         if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
@@ -164,13 +179,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if(canvas) {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            drawImage(0);
+            // When resizing, redraw the current frame, not just the first one.
+            const scrollY = window.scrollY;
+            const scrollFraction = Math.min(scrollY / SCROLL_ANIMATION_DISTANCE, 1);
+            const frameIndex = Math.min(Math.floor(scrollFraction * (variant.image.frameCount)), variant.image.frameCount -1);
+            drawImage(frameIndex);
         }
     };
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
-  }, [drawImage]);
+  }, [drawImage, variant.image.frameCount]);
 
   const value = {
     theme,
@@ -188,7 +207,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={value}>
-        {isLoading && <LoadingScreen progress={loadingProgress} />}
+        {isMounted && isLoading && <LoadingScreen progress={loadingProgress} />}
         {children}
     </AppContext.Provider>
   );
