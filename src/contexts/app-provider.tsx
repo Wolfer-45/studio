@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
@@ -69,13 +70,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if(!isMounted) return;
     document.documentElement.classList.toggle('dark', theme === 'dark');
     
     const color = theme === 'dark' ? variant.themeColorDark : variant.themeColor;
     const { h, s, l } = hexToHsl(color);
     document.documentElement.style.setProperty('--primary', `${h} ${s}% ${l}%`);
 
-  }, [theme, variant]);
+  }, [theme, variant, isMounted]);
 
   useEffect(() => {
     if (!isMounted) return;
@@ -85,6 +90,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     images.current = [];
 
     const loadImages = () => {
+      // Set initial loading state
+      setIsLoading(true);
+      setLoadingProgress(0);
+
       for (let i = 1; i <= frameCount; i++) {
         const img = new Image();
         img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.webp`;
@@ -93,9 +102,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           loadedCount++;
           const progress = Math.round((loadedCount / frameCount) * 100);
           setLoadingProgress(progress);
-          if (loadedCount === INITIAL_FRAMES_TO_LOAD) {
-            setIsLoading(false);
+
+          if (i === 1) { // Draw first frame as soon as it's loaded
             drawImage(0);
+          }
+
+          if (loadedCount >= INITIAL_FRAMES_TO_LOAD) {
+            setIsLoading(false);
           }
         };
       }
