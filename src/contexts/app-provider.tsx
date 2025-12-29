@@ -94,15 +94,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const imagePromises: Promise<HTMLImageElement>[] = [];
         let loadedCount = 0;
         
-        // This is to make sure we show some progress at the beginning
-        const progressUpdater = setInterval(() => {
-            setLoadingProgress((loadedCount / frameCount) * 100);
+        const progressInterval = setInterval(() => {
+          if (isCancelled) {
+            clearInterval(progressInterval);
+            return;
+          }
+          setLoadingProgress((loadedCount / frameCount) * 100);
         }, 100);
 
         for (let i = 1; i <= frameCount; i++) {
             const promise = new Promise<HTMLImageElement>((resolve, reject) => {
                 const img = new Image();
-                img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.webp`;
+                img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.png`;
                 img.onload = () => {
                     if (isCancelled) {
                         reject(new Error('Image loading cancelled'));
@@ -118,18 +121,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         try {
             const loadedImages = await Promise.all(imagePromises);
-            clearInterval(progressUpdater);
+            clearInterval(progressInterval);
             if (!isCancelled) {
                 images.current = loadedImages;
                 setLoadingProgress(100);
                 drawImage(0);
-                setTimeout(() => setIsLoading(false), 250); // Short delay for transition
+                setTimeout(() => setIsLoading(false), 250);
             }
         } catch (error) {
-            clearInterval(progressUpdater);
+            clearInterval(progressInterval);
             if (!isCancelled) {
                 console.error("Failed to load images for animation:", error);
-                setIsLoading(false); // Stop loading on error
+                setIsLoading(false);
             }
         }
     };
