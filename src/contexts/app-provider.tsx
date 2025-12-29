@@ -84,38 +84,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isMounted) return;
-
+  
+    let isCancelled = false;
     let loadedCount = 0;
     const { baseUrl, frameCount } = variant.image;
-    images.current = [];
-
+    const newImages: HTMLImageElement[] = [];
+  
     const loadImages = () => {
-      // Set initial loading state
       setIsLoading(true);
       setLoadingProgress(0);
-
+  
       for (let i = 1; i <= frameCount; i++) {
+        if (isCancelled) break;
         const img = new Image();
         img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.webp`;
-        images.current[i-1] = img;
+        newImages[i - 1] = img;
+  
         img.onload = () => {
+          if (isCancelled) return;
           loadedCount++;
           const progress = Math.round((loadedCount / frameCount) * 100);
           setLoadingProgress(progress);
-
-          if (i === 1) { // Draw first frame as soon as it's loaded
+  
+          if (loadedCount === 1) {
+            images.current = newImages;
             drawImage(0);
           }
-
+  
           if (loadedCount >= INITIAL_FRAMES_TO_LOAD) {
             setIsLoading(false);
           }
         };
       }
     };
-    
+  
     loadImages();
-
+  
+    return () => {
+      isCancelled = true;
+    };
   }, [variant, isMounted, drawImage]);
 
 
