@@ -1,0 +1,6 @@
+# This directory should contain the Red Bull can animation frames
+# Structure:
+# public/frames/blue can/frame_001.webp, frame_002.webp, ... frame_240.webp
+# public/frames/yellow can/frame_001.webp, frame_002.webp, ... frame_240.webp  
+# public/frames/red can/frame_001.webp, frame_002.webp, ... frame_240.webp
+
