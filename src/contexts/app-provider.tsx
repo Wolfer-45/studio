@@ -93,6 +93,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const loadAllImages = async () => {
         const imagePromises: Promise<HTMLImageElement>[] = [];
         let loadedCount = 0;
+        
+        // This is to make sure we show some progress at the beginning
+        const progressUpdater = setInterval(() => {
+            setLoadingProgress((loadedCount / frameCount) * 100);
+        }, 100);
 
         for (let i = 1; i <= frameCount; i++) {
             const promise = new Promise<HTMLImageElement>((resolve, reject) => {
@@ -104,7 +109,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                         return;
                     }
                     loadedCount++;
-                    setLoadingProgress((loadedCount / frameCount) * 100);
                     resolve(img);
                 };
                 img.onerror = reject;
@@ -114,12 +118,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         try {
             const loadedImages = await Promise.all(imagePromises);
+            clearInterval(progressUpdater);
             if (!isCancelled) {
                 images.current = loadedImages;
+                setLoadingProgress(100);
                 drawImage(0);
                 setTimeout(() => setIsLoading(false), 250); // Short delay for transition
             }
         } catch (error) {
+            clearInterval(progressUpdater);
             if (!isCancelled) {
                 console.error("Failed to load images for animation:", error);
                 setIsLoading(false); // Stop loading on error
