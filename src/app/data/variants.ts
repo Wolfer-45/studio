@@ -43,8 +43,8 @@ export const variants: Variant[] = [
     themeColor: "#0066FF",
     themeColorDark: "#3385FF",
     image: {
-      baseUrl: "https://raw.githubusercontent.com/Wolfer-45/rrbb/main/frames/blue%20can",
-      frameCount: 240,
+      baseUrl: "/frames/blue can",
+      frameCount: 192,
     },
     ingredients: [{ name: "Blueberries" }, { name: "Natural Flavors" }, { name: "Caffeine" }, { name: "Taurine" }],
     nutrition: [
@@ -63,8 +63,8 @@ export const variants: Variant[] = [
     themeColor: "#FFD700",
     themeColorDark: "#FFDE33",
     image: {
-      baseUrl: "https://raw.githubusercontent.com/Wolfer-45/rrbb/main/frames/yellow%20can",
-      frameCount: 240,
+      baseUrl: "/frames/yellow can",
+      frameCount: 192,
     },
     ingredients: [{ name: "Tropical Fruits" }, { name: "Natural Flavors" }, { name: "Caffeine" }, { name: "Taurine" }],
     nutrition: [
@@ -83,8 +83,8 @@ export const variants: Variant[] = [
     themeColor: "#FF0000",
     themeColorDark: "#FF3333",
     image: {
-      baseUrl: "https://raw.githubusercontent.com/Wolfer-45/rrbb/main/frames/red%20can",
-      frameCount: 240,
+      baseUrl: "/frames/red can",
+      frameCount: 192,
     },
     ingredients: [{ name: "Watermelon" }, { name: "Natural Flavors" }, { name: "Caffeine" }, { name: "Taurine" }],
     nutrition: [

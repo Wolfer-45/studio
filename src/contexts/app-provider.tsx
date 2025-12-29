@@ -4,9 +4,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { variants, type Variant } from '@/app/data/variants';
 import { hexToHsl } from '@/lib/color-utils';
-import LoadingScreen from '@/components/loading-screen';
-
-const SCROLL_ANIMATION_DISTANCE = 3000; // in pixels
 
 type AppContextType = {
   theme: 'dark' | 'light';
@@ -16,8 +13,6 @@ type AppContextType = {
   selectVariant: (index: number) => void;
   selectNextVariant: () => void;
   selectPrevVariant: () => void;
-  isLoading: boolean;
-  loadingProgress: number;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   activeSection: string;
 };
@@ -27,14 +22,14 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [currentVariantIndex, setCurrentVariantIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
   const [activeSection, setActiveSection] = useState('product');
 
   const images = useRef<HTMLImageElement[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameId = useRef<number>();
+  const animationIntervalId = useRef<number>();
+  const isAnimating = useRef(false);
 
   const variant = variants[currentVariantIndex];
 
@@ -42,21 +37,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTheme((prevTheme) => (prevTheme === 'dark' ? 'light' : 'dark'));
   };
 
-  const selectVariant = (index: number) => {
-    if (index === currentVariantIndex) return;
-    const newIndex = (index + variants.length) % variants.length;
-    setCurrentVariantIndex(newIndex);
-  };
-
-  const selectNextVariant = () => selectVariant(currentVariantIndex + 1);
-  const selectPrevVariant = () => selectVariant(currentVariantIndex - 1);
-  
   const drawImage = useCallback((index: number) => {
-    if (index < 0 || index >= images.current.length) return;
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
+    if (!canvas) return;
+    
+    // Ensure canvas dimensions are set
+    if (canvas.width === 0 || canvas.height === 0) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    
+    // Check if index is valid and images array exists
+    if (!images.current || images.current.length === 0) return;
+    if (index < 0 || index >= images.current.length) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
     const image = images.current[index];
-    if (canvas && ctx && image && image.complete) {
+    
+    // Only draw if image exists and is fully loaded
+    if (image && image.complete && image.naturalWidth > 0) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const hRatio = canvas.width / image.width;
       const vRatio = canvas.height / image.height;
@@ -66,6 +67,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ctx.drawImage(image, 0, 0, image.width, image.height, centerShift_x, centerShift_y, image.width * ratio, image.height * ratio);
     }
   }, []);
+
+  const playAnimation = useCallback((direction: 'forward' | 'backward') => {
+    if (isAnimating.current) return;
+    if (!images.current || images.current.length === 0) return;
+
+    isAnimating.current = true;
+    const frameCount = images.current.length;
+    let currentFrame = direction === 'forward' ? 0 : frameCount - 1;
+    const endFrame = direction === 'forward' ? frameCount - 1 : 0;
+
+    // Clear any existing animation
+    if (animationIntervalId.current) {
+      clearInterval(animationIntervalId.current);
+    }
+
+    // Play animation at ~60fps (16.67ms per frame)
+    animationIntervalId.current = window.setInterval(() => {
+      drawImage(currentFrame);
+      
+      if (direction === 'forward') {
+        currentFrame++;
+        if (currentFrame > endFrame) {
+          clearInterval(animationIntervalId.current);
+          isAnimating.current = false;
+        }
+      } else {
+        currentFrame--;
+        if (currentFrame < endFrame) {
+          clearInterval(animationIntervalId.current);
+          isAnimating.current = false;
+        }
+      }
+    }, 16.67); // ~60fps
+  }, [drawImage]);
+
+  const selectVariant = useCallback((index: number) => {
+    if (index === currentVariantIndex) return;
+    const newIndex = (index + variants.length) % variants.length;
+    
+    // Stop any ongoing animation
+    if (animationIntervalId.current) {
+      clearInterval(animationIntervalId.current);
+      isAnimating.current = false;
+    }
+    
+    setCurrentVariantIndex(newIndex);
+  }, [currentVariantIndex, variants.length]);
+
+  const selectNextVariant = useCallback(() => {
+    const nextIndex = (currentVariantIndex + 1) % variants.length;
+    selectVariant(nextIndex);
+    // Play forward animation after a brief delay to ensure variant has changed
+    setTimeout(() => playAnimation('forward'), 200);
+  }, [currentVariantIndex, variants.length, selectVariant, playAnimation]);
+
+  const selectPrevVariant = useCallback(() => {
+    const prevIndex = (currentVariantIndex - 1 + variants.length) % variants.length;
+    selectVariant(prevIndex);
+    // Play backward animation after a brief delay to ensure variant has changed
+    setTimeout(() => playAnimation('backward'), 200);
+  }, [currentVariantIndex, variants.length, selectVariant, playAnimation]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -87,53 +149,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let isCancelled = false;
     const { baseUrl, frameCount } = variant.image;
     
-    setLoadingProgress(0);
-    setIsLoading(true);
+    // Initialize canvas dimensions immediately
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
 
+    // Load images progressively in background
     const loadAllImages = async () => {
-        const imagePromises: Promise<HTMLImageElement>[] = [];
-        let loadedCount = 0;
+        // Initialize array with frameCount length
+        images.current = new Array(frameCount);
         
-        const progressInterval = setInterval(() => {
-          if (isCancelled) {
-            clearInterval(progressInterval);
-            return;
-          }
-          setLoadingProgress((loadedCount / frameCount) * 100);
-        }, 100);
-
-        for (let i = 1; i <= frameCount; i++) {
-            const promise = new Promise<HTMLImageElement>((resolve, reject) => {
-                const img = new Image();
-                img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}.png`;
-                img.onload = () => {
-                    if (isCancelled) {
-                        reject(new Error('Image loading cancelled'));
-                        return;
+        // Load images progressively - they'll be available as they load
+        for (let i = 0; i < frameCount; i++) {
+            if (isCancelled) break;
+            
+            const img = new Image();
+            img.src = `${baseUrl}/frame_${String(i).padStart(3, '0')}_delay-0.04s.webp`;
+            img.onload = () => {
+                if (!isCancelled) {
+                    images.current[i] = img;
+                    // If this is the first frame, draw it immediately
+                    if (i === 0) {
+                        drawImage(0);
                     }
-                    loadedCount++;
-                    resolve(img);
-                };
-                img.onerror = reject;
-            });
-            imagePromises.push(promise);
-        }
-
-        try {
-            const loadedImages = await Promise.all(imagePromises);
-            clearInterval(progressInterval);
-            if (!isCancelled) {
-                images.current = loadedImages;
-                setLoadingProgress(100);
-                drawImage(0);
-                setTimeout(() => setIsLoading(false), 250);
-            }
-        } catch (error) {
-            clearInterval(progressInterval);
-            if (!isCancelled) {
-                console.error("Failed to load images for animation:", error);
-                setIsLoading(false);
-            }
+                }
+            };
+            img.onerror = () => {
+                console.warn(`Failed to load frame ${i}`);
+            };
         }
     };
   
@@ -145,43 +190,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [variant, isMounted, drawImage]);
 
 
+  // Draw initial frame when variant changes (but don't animate on initial load)
   useEffect(() => {
-    if (!isMounted || isLoading) return;
-
-    let currentFrame = 0;
-    const handleScroll = () => {
-      if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-
-      animationFrameId.current = requestAnimationFrame(() => {
-        const scrollY = window.scrollY;
-        const scrollFraction = Math.min(scrollY / SCROLL_ANIMATION_DISTANCE, 1);
-        const frameIndex = Math.min(Math.floor(scrollFraction * (variant.image.frameCount)), variant.image.frameCount -1);
-        
-        if (frameIndex !== currentFrame) {
-            currentFrame = frameIndex;
-            drawImage(frameIndex);
-        }
-
-        const sections = ['product', 'ingredients', 'nutrition', 'reviews', 'faq', 'contact'];
-        let currentSection = '';
-        for (const id of sections) {
-            const sectionEl = document.getElementById(id);
-            if(sectionEl && sectionEl.offsetTop <= scrollY + window.innerHeight / 2) {
-                currentSection = id;
-            }
-        }
-        setActiveSection(currentSection);
-      });
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    // Initial draw
+    if (!isMounted) return;
+    
+    // Draw the first frame of the current variant
     drawImage(0);
-    return () => {
-        window.removeEventListener('scroll', handleScroll);
-        if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-    }
-  }, [isMounted, variant, drawImage, isLoading]);
+  }, [variant, isMounted, drawImage]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -189,17 +204,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if(canvas) {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            // When resizing, redraw the current frame, not just the first one.
-            const scrollY = window.scrollY;
-            const scrollFraction = Math.min(scrollY / SCROLL_ANIMATION_DISTANCE, 1);
-            const frameIndex = Math.min(Math.floor(scrollFraction * (variant.image.frameCount)), variant.image.frameCount -1);
-            drawImage(frameIndex);
+            // Redraw current frame (first frame by default)
+            drawImage(0);
         }
     };
     window.addEventListener('resize', handleResize);
     handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  }, [drawImage, variant.image.frameCount]);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (animationIntervalId.current) {
+        clearInterval(animationIntervalId.current);
+      }
+    };
+  }, [drawImage]);
 
   const value = {
     theme,
@@ -209,15 +226,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     selectVariant,
     selectNextVariant,
     selectPrevVariant,
-    isLoading,
-    loadingProgress,
     canvasRef,
     activeSection,
   };
 
   return (
     <AppContext.Provider value={value}>
-        {isMounted && isLoading && <LoadingScreen progress={loadingProgress} />}
         {children}
     </AppContext.Provider>
   );
